@@ -1,0 +1,10 @@
+[package]
+name = "gemini-panel"
+version = "0.1.0"
+authors = ["Derek Chen-Becker <dchenbecker@gmail.com>"]
+
+[dependencies]
+i2cdev     = "0.3.2"
+log        = "0.4.1"
+env_logger = "0.5.6"
+piston-music = "0.24.0"

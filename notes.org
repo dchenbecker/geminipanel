@@ -1,0 +1,9 @@
+* Notes for Gemini Capsule
+
+** I2C Notes for MCP23017
+- Addresses start at 0x20, and _all_ address pins must be pulled high or low as needed
+- For consistent behavior, all input pins should have internal pullups enabled (GPPUA and GPPUB, 0xC and 0xD)
+- Also, to make things consistent with pullups enabled, invert the input polarity (IPOLA and IPOLB, 0x2 and 0x3)
+
+** Rust Development
+- Need the rustup script to target armv7-unknown-linux-gnueabihf
