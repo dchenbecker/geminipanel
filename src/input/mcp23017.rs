@@ -118,6 +118,10 @@ impl InputHandler for PanelInputHandler {
             }
         }
     }
+
+    fn shutdown(self) {
+        debug!("Shutdown is NOOP on MCP23017");
+    }
 }
 
 impl From<LinuxI2CError> for InputError {

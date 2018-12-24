@@ -21,4 +21,6 @@ pub trait InputHandler {
     fn read_events(&mut self) -> Result<Vec<BitEvent>, InputError>;
 
     fn set_output(&mut self, dev_index: usize, bits: &[BitEvent]) -> Result<(), InputError>;
+
+    fn shutdown(self);
 }

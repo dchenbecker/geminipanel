@@ -109,4 +109,13 @@ impl InputHandler for StdinInput {
     fn set_output(&mut self, dev_index: usize, bits: &[BitEvent]) -> Result<(), InputError> {
         Ok(println!("Setting bits {:?} for dev {}", bits, dev_index))
     }
+
+    fn shutdown(self) {
+        debug!("Shutting down STDIN poller thread");
+
+        self.poll_condition.store(false, Ordering::Relaxed);
+        self.poller
+            .join()
+            .expect("Failed to cleanly shut down StdinInput");
+    }
 }
