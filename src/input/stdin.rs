@@ -1,6 +1,8 @@
 use std::io;
 use std::num::ParseIntError;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, SendError, Sender, TryRecvError};
+use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -10,6 +12,7 @@ use super::*;
 pub struct StdinInput {
     poller: JoinHandle<()>,
     rx: Receiver<String>,
+    poll_condition: Arc<AtomicBool>,
 }
 
 impl From<io::Error> for InputError {
@@ -43,9 +46,14 @@ impl StdinInput {
         // Set up a thread to poll for input on stdin, and a channel to use for transferring that input
         let (mut tx, rx) = channel();
 
+        let poll_guard = Arc::new(AtomicBool::new(true));
+
+        let poll_condition = poll_guard.clone();
+
         let poller = thread::spawn(move || {
             let mut buffer = String::with_capacity(DEFAULT_INPUT_BUFFER_SIZE);
-            loop {
+            let should_run = poll_guard.clone();
+            while should_run.load(Ordering::Relaxed) {
                 buffer.clear();
                 read_and_send(&mut buffer, &mut tx).unwrap_or_else(|err| {
                     warn!("Error polling stdin: {}", err.message);
@@ -54,7 +62,11 @@ impl StdinInput {
         });
 
         // Noop
-        StdinInput { poller, rx }
+        StdinInput {
+            poller,
+            rx,
+            poll_condition,
+        }
     }
 }
 

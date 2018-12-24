@@ -1,23 +1,28 @@
 use input::bitevents::BitEvent;
+use std::collections::BTreeMap;
 use std::sync::mpsc::Sender;
 
 pub struct Simulator {
-    handlers: Vec<EventHandler>,
+    handlers: BTreeMap<usize, EventHandler>,
     sender: Sender<BitEvent>,
 }
 
 impl Simulator {
-    pub fn new(handlers: Vec<EventHandler>, sender: &Sender<BitEvent>) -> Simulator {
-        Simulator { handlers: handlers, sender: (*sender).clone() }
+    pub fn new(handlers: BTreeMap<usize, EventHandler>, sender: &Sender<BitEvent>) -> Simulator {
+        Simulator {
+            handlers: handlers,
+            sender: (*sender).clone(),
+        }
     }
 
     pub fn process(&self, events: &[BitEvent]) {
+        debug!("Processing {} simulation input events", events.len());
         for event in events {
             if event.bit > self.handlers.len() {
                 warn!("Event without a handler on index {}", event.bit);
             } else {
-                let to_fire = &self.handlers[event.bit];
-                info!("Firing {} for event {:?}", to_fire.name, event);
+                let to_fire = &self.handlers[&event.bit];
+                info!("Firing '{}' for event {:?}", to_fire.name, event);
                 (to_fire.handler)(event.value, &self.sender);
             }
         }
