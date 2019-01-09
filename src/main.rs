@@ -8,6 +8,7 @@ extern crate env_logger;
 
 extern crate music;
 
+use std::collections::BTreeSet;
 use std::env;
 use std::process;
 use std::sync::atomic;
@@ -33,8 +34,11 @@ enum Sounds {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 3 {
-        eprintln!("Usage: {} <i2c dev path 1> <i2c dev path 2>", args[0]);
+    if args.len() < 3 || args.len() > 4 {
+        eprintln!(
+            "Usage: {} <i2c dev path 1> <i2c dev path 2> [<event handler file>]",
+            args[0]
+        );
         process::exit(-1);
     }
 
@@ -43,7 +47,13 @@ fn main() {
     // Set up a channel for simulation feedback
     let (tx, rx) = mpsc::channel::<BitEvent>();
 
-    let sim = init_simulator(&tx);
+    let handlers = if args.len() == 4 {
+        load_handlers(&args[3]).expect("Failed to load handlers")
+    } else {
+        test_handlers()
+    };
+
+    let sim = init_simulator(&tx, handlers);
 
     info!("Init sound...");
 
@@ -63,7 +73,7 @@ fn main() {
 
         info!("Configuring devices...");
 
-        if cfg!(target_arch = "x86_64") {
+        if args[1].to_lowercase() == "stdin" {
             debug!("Read Stdin");
             main_loop(&mut input::stdin::StdinInput::new(), rx, sim);
         } else {
@@ -110,18 +120,130 @@ fn main_loop<T: input::InputHandler>(
     }
 }
 
-use std::thread;
-use std::time::Duration;
-
 // Globals for now, need to encapsulate state later
 static TURBINES_ON: atomic::AtomicBool = atomic::AtomicBool::new(false);
 
-fn init_simulator(sender: &mpsc::Sender<BitEvent>) -> simulation::Simulator {
+use std::thread;
+use std::time::Duration;
+
+fn init_simulator(sender: &mpsc::Sender<BitEvent>, handlers: HandlerMap) -> simulation::Simulator {
     use simulation::*;
 
-    let handlers = btreemap!{
-        0 => EventHandler::new("First handler", |value, _| { info!("Got value of {} in handler", value); }),
-        1 => EventHandler::new("Blink test", |value, tx| {
+    Simulator::new(handlers, &sender)
+}
+
+use input::InputError;
+use simulation::{EventHandler, HandlerMap};
+use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+
+// Format for each line is "input ID, <name>, <on sound filename>, <off sound filename>"
+fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
+    use std::str::FromStr;
+
+    let mut loaded_sounds: BTreeSet<&String> = BTreeSet::new();
+
+    let input = File::open(filename)?;
+    let reader = BufReader::new(input);
+
+    let mut result: HandlerMap = BTreeMap::new();
+
+    for line_result in reader.lines() {
+        let line = line_result?;
+        let parts: Vec<&str> = line.split(",").collect();
+
+        println!("Got definition for input {:?}", parts);
+
+        assert!(
+            parts.len() == 4,
+            format!("Incorrect number of elements for {}", line)
+        );
+
+        assert!(
+            !parts[1].trim().is_empty(),
+            format!("Missing name for event: {}", line)
+        );
+
+        let key = usize::from_str(parts[0])?;
+
+        if result.contains_key(&key) {
+            warn!("Redefining input: {:?}", parts);
+        }
+
+        let on_filename: &String = to_static(parts[1].trim());
+
+        if !on_filename.is_empty() && !loaded_sounds.contains(on_filename) {
+            bind_soundfile(&on_filename)?;
+            loaded_sounds.insert(on_filename);
+        }
+
+        let off_filename: &String = to_static(parts[2].trim());
+
+        if !off_filename.is_empty() && !loaded_sounds.contains(off_filename) {
+            bind_soundfile(&off_filename)?;
+            loaded_sounds.insert(off_filename);
+        }
+
+        if !on_filename.is_empty() || !off_filename.is_empty() {
+            let handler_name = to_static(parts[1].trim());
+
+            let handler_func: simulation::HandlerFunc = Box::new(move |value, _| {
+                if value == 0 && !off_filename.is_empty() {
+                    debug!("Playing off sound for {}", handler_name);
+                    music::play_sound(&off_filename, music::Repeat::Times(0), music::MAX_VOLUME);
+                }
+
+                if value == 1 && !on_filename.is_empty() {
+                    debug!("Playing on sound for {}", handler_name);
+                    music::play_sound(&on_filename, music::Repeat::Times(0), music::MAX_VOLUME);
+                }
+            });
+
+            let handler = EventHandler::new(handler_name, handler_func);
+            result.insert(key, handler);
+        }
+    }
+
+    Ok(result)
+}
+
+use std::path::Path;
+
+fn bind_soundfile(filename: &'static String) -> Result<(), InputError> {
+    assert!(!filename.is_empty(), "binding empty filename");
+
+    let p = Path::new(filename);
+
+    if !p.exists() {
+        return Err(InputError::new(format!(
+            "Sound file '{}' does not exist",
+            filename
+        )));
+    }
+
+    if !p.is_file() {
+        return Err(InputError::new(format!(
+            "Sound file '{}' does not exist",
+            filename
+        )));
+    }
+
+    music::bind_sound_file(filename, filename);
+
+    Ok(())
+}
+
+fn to_static(input: &str) -> &'static String {
+    Box::leak(Box::new(String::from(input)))
+}
+
+fn test_handlers() -> HandlerMap {
+    use simulation::blink;
+
+    btreemap! {
+        0 => EventHandler::new("First handler", Box::new(move |value, _| { info!("Got value of {} in handler", value); })),
+        1 => EventHandler::new("Blink test", Box::new(move |value, tx| {
             const OUTPUT_PIN :usize = 1;
             let output: usize = 3;
             if value != 0 {
@@ -133,41 +255,25 @@ fn init_simulator(sender: &mpsc::Sender<BitEvent>) -> simulation::Simulator {
             } else {
                 tx.send(BitEvent { bit: OUTPUT_PIN, value: 0 }).unwrap();
             }
-        }),
-        2 => EventHandler::new("Turbine control", |value, _| {
+        })),
+        2 => EventHandler::new("Turbine control", Box::new(move |value, _| {
             if value == 0 {
-                debug!("Stopping turbine.");
-                TURBINES_ON.store(false, atomic::Ordering::Relaxed);
-                music::play_sound(&Sounds::TurbineShutdown, music::Repeat::Times(0), music::MAX_VOLUME);
+                if TURBINES_ON.load(atomic::Ordering::Relaxed) {
+                    debug!("Stopping turbine.");
+                    TURBINES_ON.store(false, atomic::Ordering::Relaxed);
+                    music::play_sound(&Sounds::TurbineShutdown, music::Repeat::Times(0), music::MAX_VOLUME);
+                } else {
+                    debug!("Turbines already off. NOOP");
+                }
             } else {
-                debug!("Starting turbine.");
-                TURBINES_ON.store(true, atomic::Ordering::Relaxed);
-                music::play_sound(&Sounds::TurbineStart, music::Repeat::Times(0), music::MAX_VOLUME);
+                if ! TURBINES_ON.load(atomic::Ordering::Relaxed) {
+                    debug!("Starting turbine.");
+                    TURBINES_ON.store(true, atomic::Ordering::Relaxed);
+                    music::play_sound(&Sounds::TurbineStart, music::Repeat::Times(0), music::MAX_VOLUME);
+                } else {
+                    debug!("Turbines already started. NOOP");
+                }
             }
-        })
-    };
-
-    Simulator::new(handlers, &sender)
-}
-
-/// Blink the given output on/off (one interval each) for the specified count
-fn blink(output_id: usize, count: usize, interval: Duration, tx: &mpsc::Sender<BitEvent>) {
-    debug!("Blinking {} times with interval {:?}", count, interval);
-    for _ in 0..count {
-        tx.send(BitEvent {
-            bit: output_id,
-            value: 1,
-        }).unwrap();
-        thread::sleep(interval);
-        tx.send(BitEvent {
-            bit: output_id,
-            value: 0,
-        }).unwrap();
-        thread::sleep(interval);
+        }))
     }
-    // Finally, turn it on once done blinking
-    tx.send(BitEvent {
-        bit: output_id,
-        value: 1,
-    }).unwrap();
 }

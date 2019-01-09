@@ -1,5 +1,4 @@
 use std::io;
-use std::num::ParseIntError;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, SendError, Sender, TryRecvError};
 use std::sync::Arc;
@@ -13,22 +12,6 @@ pub struct StdinInput {
     poller: JoinHandle<()>,
     rx: Receiver<String>,
     poll_condition: Arc<AtomicBool>,
-}
-
-impl From<io::Error> for InputError {
-    fn from(err: io::Error) -> InputError {
-        InputError {
-            message: format!("Error: {}", err),
-        }
-    }
-}
-
-impl From<ParseIntError> for InputError {
-    fn from(err: ParseIntError) -> InputError {
-        InputError {
-            message: format!("Error: {}", err),
-        }
-    }
 }
 
 impl From<SendError<String>> for InputError {
@@ -104,7 +87,8 @@ impl InputHandler for StdinInput {
                                 message: format!("Invalid input spec: '{}'", s),
                             })
                         }
-                    }).collect()
+                    })
+                    .collect()
             }
 
             Err(TryRecvError::Empty) => {
