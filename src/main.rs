@@ -11,7 +11,6 @@ extern crate music;
 use std::collections::BTreeSet;
 use std::env;
 use std::process;
-use std::sync::atomic;
 use std::sync::mpsc;
 
 mod input;
@@ -24,17 +23,10 @@ enum Music {
     Background,
 }
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
-enum Sounds {
-    TurbineStart,
-    TurbineShutdown,
-    Launch,
-}
-
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 3 || args.len() > 4 {
+    if args.len() != 4 {
         eprintln!(
             "Usage: {} <i2c dev path 1> <i2c dev path 2> [<event handler file>]",
             args[0]
@@ -47,29 +39,18 @@ fn main() {
     // Set up a channel for simulation feedback
     let (tx, rx) = mpsc::channel::<BitEvent>();
 
-    let handlers = if args.len() == 4 {
-        load_handlers(&args[3]).expect("Failed to load handlers")
-    } else {
-        test_handlers()
-    };
-
-    let sim = init_simulator(&tx, handlers);
-
     info!("Init sound...");
 
-    music::start::<Music, Sounds, _>(16, || {
+    music::start::<Music, &'static String, _>(16, || {
         music::bind_music_file(Music::Background, "./sounds/background.wav");
-        music::bind_sound_file(Sounds::TurbineStart, "./sounds/turbine_startup_fade.wav");
-        music::bind_sound_file(
-            Sounds::TurbineShutdown,
-            "./sounds/turbine_startup_fade_reverse.wav",
-        );
-        music::bind_sound_file(Sounds::Launch, "./sounds/full-launch.wav");
-
         music::set_volume(music::MAX_VOLUME);
 
         info!("Starting music...");
         music::play_music(&Music::Background, music::Repeat::Forever);
+
+        let handlers = load_handlers(&args[3]).expect("Failed to load handlers");
+
+        let sim = init_simulator(&tx, handlers);
 
         info!("Configuring devices...");
 
@@ -121,10 +102,6 @@ fn main_loop<T: input::InputHandler>(
 }
 
 // Globals for now, need to encapsulate state later
-static TURBINES_ON: atomic::AtomicBool = atomic::AtomicBool::new(false);
-
-use std::thread;
-use std::time::Duration;
 
 fn init_simulator(sender: &mpsc::Sender<BitEvent>, handlers: HandlerMap) -> simulation::Simulator {
     use simulation::*;
@@ -240,44 +217,4 @@ fn bind_soundfile(filename: &'static String) -> Result<(), InputError> {
 
 fn to_static(input: &str) -> &'static String {
     Box::leak(Box::new(String::from(input)))
-}
-
-fn test_handlers() -> HandlerMap {
-    use simulation::blink;
-
-    btreemap! {
-        0 => EventHandler::new("First handler", Box::new(move |value, _| { info!("Got value of {} in handler", value); })),
-        1 => EventHandler::new("Blink test", Box::new(move |value, tx| {
-            const OUTPUT_PIN :usize = 1;
-            let output: usize = 3;
-            if value != 0 {
-                let our_tx = tx.clone();
-                thread::spawn(move || {
-                    debug!("Invoking blink");
-                    blink(OUTPUT_PIN, output, Duration::from_millis(400), &our_tx)
-                });
-            } else {
-                tx.send(BitEvent { bit: OUTPUT_PIN, value: 0 }).unwrap();
-            }
-        })),
-        2 => EventHandler::new("Turbine control", Box::new(move |value, _| {
-            if value == 0 {
-                if TURBINES_ON.load(atomic::Ordering::Relaxed) {
-                    debug!("Stopping turbine.");
-                    TURBINES_ON.store(false, atomic::Ordering::Relaxed);
-                    music::play_sound(&Sounds::TurbineShutdown, music::Repeat::Times(0), music::MAX_VOLUME);
-                } else {
-                    debug!("Turbines already off. NOOP");
-                }
-            } else {
-                if ! TURBINES_ON.load(atomic::Ordering::Relaxed) {
-                    debug!("Starting turbine.");
-                    TURBINES_ON.store(true, atomic::Ordering::Relaxed);
-                    music::play_sound(&Sounds::TurbineStart, music::Repeat::Times(0), music::MAX_VOLUME);
-                } else {
-                    debug!("Turbines already started. NOOP");
-                }
-            }
-        }))
-    }
 }
