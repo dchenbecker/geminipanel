@@ -175,14 +175,14 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
             warn!("Redefining input: {:?}", parts);
         }
 
-        let on_filename: &String = to_static(parts[1].trim());
+        let on_filename: &String = to_static(parts[2].trim());
 
         if !on_filename.is_empty() && !loaded_sounds.contains(on_filename) {
             bind_soundfile(&on_filename)?;
             loaded_sounds.insert(on_filename);
         }
 
-        let off_filename: &String = to_static(parts[2].trim());
+        let off_filename: &String = to_static(parts[3].trim());
 
         if !off_filename.is_empty() && !loaded_sounds.contains(off_filename) {
             bind_soundfile(&off_filename)?;
