@@ -165,7 +165,11 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
             format!("Missing name for event: {}", line)
         );
 
-        let key = usize::from_str(parts[0])?;
+        let key: usize = if parts[0] == "default" {
+            simulation::DEFAULT_HANDLER_EVENT
+        } else {
+            usize::from_str(parts[0])?
+        };
 
         if result.contains_key(&key) {
             warn!("Redefining input: {:?}", parts);
