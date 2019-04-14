@@ -171,12 +171,12 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
 
             let handler_func: simulation::HandlerFunc = Box::new(move |value, _| {
                 if value == 0 && !off_filename.is_empty() {
-                    debug!("Playing off sound for {}", handler_name);
+                    info!("Playing off sound for {}", handler_name);
                     music::play_sound(&off_filename, music::Repeat::Times(0), music::MAX_VOLUME);
                 }
 
                 if value == 1 && !on_filename.is_empty() {
-                    debug!("Playing on sound for {}", handler_name);
+                    info!("Playing on sound for {}", handler_name);
                     music::play_sound(&on_filename, music::Repeat::Times(0), music::MAX_VOLUME);
                 }
             });

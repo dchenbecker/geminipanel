@@ -50,7 +50,7 @@ impl PanelInputHandler {
                 dev_path: &argv[2],
                 address: 0x20,
                 polarity_mask: 0x0000,
-                direction_mask: 0xff00,
+                direction_mask: 0x00ff,
             },
         ])?;
         let buffer_len = devices.len() * 2;
@@ -229,7 +229,8 @@ fn setup_devices(devices: &[DeviceConfig]) -> Result<Vec<MCP23017>, LinuxI2CErro
                 config.polarity_mask,
                 config.direction_mask,
             )
-        }).collect()
+        })
+        .collect()
 }
 
 fn allocate_slice(len: usize) -> ResultBuffer {
@@ -282,5 +283,6 @@ fn read_devices(devices: &mut Vec<MCP23017>, buffer: &mut [u8]) -> Result<(), Li
                 buffer[buffer_base + 1] = ((value >> 8) & 0xff) as u8;
                 ()
             })
-        }).collect()
+        })
+        .collect()
 }
