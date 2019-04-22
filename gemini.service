@@ -1,0 +1,15 @@
+[Unit]
+Description=Gemini Simulation
+After=network.target
+
+[Service]
+Type=simple
+# Another Type option: forking
+User=root
+WorkingDirectory=/home/derek/gemini-panel
+ExecStart=/home/derek/gemini-panel/service.sh
+Restart=on-failure
+# Other Restart options: or always, on-abort, etc
+
+[Install]
+WantedBy=multi-user.target
