@@ -4,6 +4,15 @@
 - Addresses start at 0x20, and _all_ address pins must be pulled high or low as needed
 - For consistent behavior, all input pins should have internal pullups enabled (GPPUA and GPPUB, 0xC and 0xD)
 - Also, to make things consistent with pullups enabled, invert the input polarity (IPOLA and IPOLB, 0x2 and 0x3)
+- Had to [[https://www.raspberrypi-spy.co.uk/2018/02/change-raspberry-pi-i2c-bus-speed/][reduce I2C baud rate]] by setting =i2c_<dev>_baudrate=10000= due to a bug[fn:1] in the BMC I2C controller
+
+** Misc Notes
+
+- For startup, will need a [[https://www.dexterindustries.com/howto/run-a-program-on-your-raspberry-pi-at-startup/][systemd startup script]]
 
 ** Rust Development
 - Need the rustup script to target armv7-unknown-linux-gnueabihf
+
+* Footnotes
+
+[fn:1]http://www.advamation.com/knowhow/raspberrypi/rpi-i2c-bug.html 
