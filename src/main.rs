@@ -1,6 +1,4 @@
 extern crate i2cdev;
-#[macro_use]
-extern crate maplit;
 
 #[macro_use]
 extern crate log;
@@ -119,10 +117,17 @@ use std::io::{BufRead, BufReader};
 fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
     use std::str::FromStr;
 
+    let file_path = Path::new(filename);
+
     let mut loaded_sounds: BTreeSet<&String> = BTreeSet::new();
 
     let input = File::open(filename)?;
     let reader = BufReader::new(input);
+
+    let base_dir = match file_path.parent() {
+        Some(p) => p,
+        None => return Err(InputError::from_str("Input file does not have a parent")),
+    };
 
     let mut result: HandlerMap = BTreeMap::new();
 
@@ -155,14 +160,14 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
         let on_filename: &String = to_static(parts[2].trim());
 
         if !on_filename.is_empty() && !loaded_sounds.contains(on_filename) {
-            bind_soundfile(&on_filename)?;
+            bind_soundfile(&on_filename, &base_dir)?;
             loaded_sounds.insert(on_filename);
         }
 
         let off_filename: &String = to_static(parts[3].trim());
 
         if !off_filename.is_empty() && !loaded_sounds.contains(off_filename) {
-            bind_soundfile(&off_filename)?;
+            bind_soundfile(&off_filename, &base_dir)?;
             loaded_sounds.insert(off_filename);
         }
 
@@ -191,19 +196,28 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
 
 use std::path::Path;
 
-fn bind_soundfile(filename: &'static String) -> Result<(), InputError> {
+fn bind_soundfile(filename: &'static String, base_dir: &Path) -> Result<(), InputError> {
     assert!(!filename.is_empty(), "binding empty filename");
 
-    let p = Path::new(filename);
+    let provided_path = Path::new(filename);
+    let mut absolute_path = base_dir.to_path_buf();
 
-    if !p.exists() {
+    // Make non-absolute paths relative to the base_dir
+    let resolved_path = if provided_path.has_root() {
+        provided_path
+    } else {
+        absolute_path.push(provided_path);
+        absolute_path.as_path()
+    };
+
+    if !resolved_path.exists() {
         return Err(InputError::new(format!(
             "Sound file '{}' does not exist",
             filename
         )));
     }
 
-    if !p.is_file() {
+    if !resolved_path.is_file() {
         return Err(InputError::new(format!(
             "Sound file '{}' does not exist",
             filename

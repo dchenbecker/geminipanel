@@ -16,6 +16,10 @@ impl InputError {
     pub fn new(message: String) -> InputError {
         InputError { message }
     }
+
+    pub fn from_str(message: &str) -> InputError {
+        InputError::new(message.to_string())
+    }
 }
 
 impl Display for InputError {
