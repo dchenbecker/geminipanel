@@ -113,7 +113,10 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
+const DEFAULT_NAME: &str = "default";
+
 // Format for each line is "input ID, <name>, <on sound filename>, <off sound filename>"
+// Filenames can have an optional float suffix (0-1] to specify volume
 fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
     use std::str::FromStr;
 
@@ -147,7 +150,7 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
             format!("Missing name for event: {}", line)
         );
 
-        let key: usize = if parts[0] == "default" {
+        let key: usize = if parts[0] == DEFAULT_NAME {
             simulation::DEFAULT_HANDLER_EVENT
         } else {
             usize::from_str(parts[0])?
@@ -157,32 +160,40 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
             warn!("Redefining input: {:?}", parts);
         }
 
-        let on_filename: &String = to_static(parts[2].trim());
+        let on_file = parse_sound_filename(parts[2].trim())?;
 
-        if !on_filename.is_empty() && !loaded_sounds.contains(on_filename) {
-            bind_soundfile(&on_filename, &base_dir)?;
-            loaded_sounds.insert(on_filename);
+        if let Some((on_filename, _)) = on_file {
+            if !loaded_sounds.contains(on_filename) {
+                bind_soundfile(&on_filename, &base_dir)?;
+                loaded_sounds.insert(on_filename);
+            }
         }
 
-        let off_filename: &String = to_static(parts[3].trim());
+        let off_file = parse_sound_filename(parts[3].trim())?;
 
-        if !off_filename.is_empty() && !loaded_sounds.contains(off_filename) {
-            bind_soundfile(&off_filename, &base_dir)?;
-            loaded_sounds.insert(off_filename);
+        if let Some((off_filename, _)) = off_file {
+            if !loaded_sounds.contains(off_filename) {
+                bind_soundfile(&off_filename, &base_dir)?;
+                loaded_sounds.insert(off_filename);
+            }
         }
 
-        if !on_filename.is_empty() || !off_filename.is_empty() {
+        if on_file.is_some() || off_file.is_some() {
             let handler_name = to_static(parts[1].trim());
 
             let handler_func: simulation::HandlerFunc = Box::new(move |value, _| {
-                if value == 0 && !off_filename.is_empty() {
-                    info!("Playing off sound for {}", handler_name);
-                    music::play_sound(&off_filename, music::Repeat::Times(0), music::MAX_VOLUME);
+                if value == 0 {
+                    if let Some((off_filename, volume)) = off_file {
+                        info!("Playing off sound for {}", handler_name);
+                        music::play_sound(&off_filename, music::Repeat::Times(0), volume);
+                    }
                 }
 
-                if value == 1 && !on_filename.is_empty() {
-                    info!("Playing on sound for {}", handler_name);
-                    music::play_sound(&on_filename, music::Repeat::Times(0), music::MAX_VOLUME);
+                if value == 1 {
+                    if let Some((on_filename, volume)) = on_file {
+                        info!("Playing on sound for {}", handler_name);
+                        music::play_sound(&on_filename, music::Repeat::Times(0), volume);
+                    }
                 }
             });
 
@@ -192,6 +203,30 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
     }
 
     Ok(result)
+}
+
+// Parse the filename to determine whether there's a sound, and if so, the optional volume, if specified. Default to
+// music::MAX_VOLUME
+fn parse_sound_filename(filename: &str) -> Result<Option<(&'static String, f64)>, InputError> {
+    use std::str::FromStr;
+
+    if filename.is_empty() {
+        Ok(None)
+    } else {
+        let parts: Vec<_> = filename.split(":").collect();
+
+        match parts.len() {
+            1 => Ok(Some((to_static(parts[0]), music::MAX_VOLUME))),
+            2 => {
+                let volume = f64::from_str(parts[1])?;
+                Ok(Some((to_static(parts[0]), volume)))
+            }
+            invalid => Err(InputError::new(format!(
+                "Invalid sound file spec '{}': {} parts",
+                filename, invalid
+            ))),
+        }
+    }
 }
 
 use std::path::Path;
