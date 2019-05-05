@@ -103,7 +103,8 @@ impl InputHandler for StdinInput {
     }
 
     fn set_output(&mut self, dev_index: usize, bits: &[BitEvent]) -> Result<(), InputError> {
-        Ok(println!("Setting bits {:?} for dev {}", bits, dev_index))
+        println!("Setting bits {:?} for dev {}", bits, dev_index);
+        Ok(())
     }
 
     fn shutdown(self) {

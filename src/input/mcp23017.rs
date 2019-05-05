@@ -70,7 +70,7 @@ impl PanelInputHandler {
 }
 
 fn compute_new_values(current_value: u16, bits: &[BitEvent]) -> u16 {
-    bits.into_iter().fold(current_value, |value, event| {
+    bits.iter().fold(current_value, |value, event| {
         let raw_mask: u16 = 1 << event.bit;
 
         let mask = if event.value == 0 {
@@ -190,8 +190,8 @@ pub struct MCP23017 {
 
 impl MCP23017 {
     pub fn read_pins(&mut self) -> Result<u16, LinuxI2CError> {
-        let mut result: u16 = self.dev.smbus_read_byte_data(GPIO)? as u16;
-        result |= (self.dev.smbus_read_byte_data(GPIO + 1)? as u16) << 8;
+        let mut result = u16::from(self.dev.smbus_read_byte_data(GPIO)?);
+        result |= u16::from(self.dev.smbus_read_byte_data(GPIO + 1)?) << 8;
         debug!("Read 0x{:04x} from 0x{:02x}", result, self.address);
         Ok(result)
     }
@@ -235,10 +235,7 @@ fn setup_devices(devices: &[DeviceConfig]) -> Result<Vec<MCP23017>, LinuxI2CErro
 
 fn allocate_slice(len: usize) -> ResultBuffer {
     info!("Allocating buffer of size {}", len);
-
-    let mut base_vec = Vec::with_capacity(len);
-    base_vec.resize(len, 0);
-    base_vec.into_boxed_slice()
+    vec![0; len].into_boxed_slice()
 }
 
 fn poll_inputs(state: &mut PanelInputHandler) -> Result<Vec<BitEvent>, InputError> {
@@ -281,7 +278,6 @@ fn read_devices(devices: &mut Vec<MCP23017>, buffer: &mut [u8]) -> Result<(), Li
             dev.read_pins().map(|value| {
                 buffer[buffer_base] = (value & 0xff) as u8;
                 buffer[buffer_base + 1] = ((value >> 8) & 0xff) as u8;
-                ()
             })
         })
         .collect()

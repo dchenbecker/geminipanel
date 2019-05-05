@@ -14,7 +14,7 @@ pub struct Simulator {
 impl Simulator {
     pub fn new(handlers: HandlerMap, sender: &Sender<BitEvent>) -> Simulator {
         Simulator {
-            handlers: handlers,
+            handlers,
             sender: (*sender).clone(),
         }
     }

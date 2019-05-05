@@ -36,10 +36,18 @@ impl From<io::Error> for InputError {
     }
 }
 
-use std::num::ParseIntError;
+use std::num::{ParseFloatError, ParseIntError};
 
 impl From<ParseIntError> for InputError {
     fn from(err: ParseIntError) -> InputError {
+        InputError {
+            message: format!("Error: {}", err),
+        }
+    }
+}
+
+impl From<ParseFloatError> for InputError {
+    fn from(err: ParseFloatError) -> InputError {
         InputError {
             message: format!("Error: {}", err),
         }
