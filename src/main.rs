@@ -11,6 +11,7 @@ use std::env;
 use std::process;
 use std::sync::mpsc;
 
+mod bindfiles;
 mod input;
 mod simulation;
 
@@ -107,6 +108,7 @@ fn init_simulator(sender: &mpsc::Sender<BitEvent>, handlers: HandlerMap) -> simu
     Simulator::new(handlers, &sender)
 }
 
+use bindfiles::parse_sound_filename;
 use input::InputError;
 use simulation::{EventHandler, HandlerMap};
 use std::collections::BTreeMap;
@@ -203,30 +205,6 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
     }
 
     Ok(result)
-}
-
-// Parse the filename to determine whether there's a sound, and if so, the optional volume, if specified. Default to
-// music::MAX_VOLUME
-fn parse_sound_filename(filename: &str) -> Result<Option<(&'static String, f64)>, InputError> {
-    use std::str::FromStr;
-
-    if filename.is_empty() {
-        Ok(None)
-    } else {
-        let parts: Vec<_> = filename.split(":").collect();
-
-        match parts.len() {
-            1 => Ok(Some((to_static(parts[0]), music::MAX_VOLUME))),
-            2 => {
-                let volume = f64::from_str(parts[1])?;
-                Ok(Some((to_static(parts[0]), volume)))
-            }
-            invalid => Err(InputError::new(format!(
-                "Invalid sound file spec '{}': {} parts",
-                filename, invalid
-            ))),
-        }
-    }
 }
 
 use std::path::Path;

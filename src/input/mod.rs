@@ -7,7 +7,7 @@ use self::bitevents::BitEvent;
 use std::fmt::{Display, Error, Formatter};
 use std::io;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct InputError {
     message: String,
 }
