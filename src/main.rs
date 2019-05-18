@@ -108,9 +108,8 @@ fn init_simulator(sender: &mpsc::Sender<BitEvent>, handlers: HandlerMap) -> simu
     Simulator::new(handlers, &sender)
 }
 
-use bindfiles::parse_sound_filename;
 use input::InputError;
-use simulation::{EventHandler, HandlerMap};
+use simulation::HandlerMap;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -138,19 +137,7 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
 
     for line_result in reader.lines() {
         let line = line_result?;
-        let parts: Vec<&str> = line.split(",").collect();
-
-        println!("Got definition for input {:?}", parts);
-
-        assert!(
-            parts.len() == 4,
-            format!("Incorrect number of elements for {}", line)
-        );
-
-        assert!(
-            !parts[1].trim().is_empty(),
-            format!("Missing name for event: {}", line)
-        );
+        let parts = bindfiles::split_sound_line(&line)?;
 
         let key: usize = if parts[0] == DEFAULT_NAME {
             simulation::DEFAULT_HANDLER_EVENT
@@ -162,7 +149,7 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
             warn!("Redefining input: {:?}", parts);
         }
 
-        let on_file = parse_sound_filename(parts[2].trim())?;
+        let on_file = bindfiles::parse_sound_filename(parts[2].trim())?;
 
         if let Some((on_filename, _)) = on_file {
             if !loaded_sounds.contains(on_filename) {
@@ -171,7 +158,7 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
             }
         }
 
-        let off_file = parse_sound_filename(parts[3].trim())?;
+        let off_file = bindfiles::parse_sound_filename(parts[3].trim())?;
 
         if let Some((off_filename, _)) = off_file {
             if !loaded_sounds.contains(off_filename) {
@@ -180,26 +167,9 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
             }
         }
 
-        if on_file.is_some() || off_file.is_some() {
-            let handler_name = to_static(parts[1].trim());
-
-            let handler_func: simulation::HandlerFunc = Box::new(move |value, _| {
-                if value == 0 {
-                    if let Some((off_filename, volume)) = off_file {
-                        info!("Playing off sound for {}", handler_name);
-                        music::play_sound(&off_filename, music::Repeat::Times(0), volume);
-                    }
-                }
-
-                if value == 1 {
-                    if let Some((on_filename, volume)) = on_file {
-                        info!("Playing on sound for {}", handler_name);
-                        music::play_sound(&on_filename, music::Repeat::Times(0), volume);
-                    }
-                }
-            });
-
-            let handler = EventHandler::new(handler_name, handler_func);
+        if let Some(handler) =
+            bindfiles::create_handler(to_static(parts[1].trim()), on_file, off_file)
+        {
             result.insert(key, handler);
         }
     }
