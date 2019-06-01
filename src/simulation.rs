@@ -22,18 +22,16 @@ impl Simulator {
     pub fn process(&self, events: &[BitEvent]) {
         debug!("Processing {} simulation input events", events.len());
         for event in events {
-            if !self.handlers.contains_key(&event.bit) {
-                if self.handlers.contains_key(&DEFAULT_HANDLER_EVENT) {
-                    info!("Firing default handler for event {:?}", event);
-                    let to_fire = &self.handlers[&DEFAULT_HANDLER_EVENT];
-                    (to_fire.handler)(event.value, &self.sender);
-                } else {
-                    warn!("Event without a handler: {}", event);
-                }
-            } else {
-                let to_fire = &self.handlers[&event.bit];
+            let target_handler = self
+                .handlers
+                .get(&event.bit)
+                .or(self.handlers.get(&DEFAULT_HANDLER_EVENT));
+
+            if let Some(to_fire) = target_handler {
                 info!("Firing '{}' for event {:?}", to_fire.name, event);
                 (to_fire.handler)(event.value, &self.sender);
+            } else {
+                warn!("Event without a handler: {}", event);
             }
         }
     }
