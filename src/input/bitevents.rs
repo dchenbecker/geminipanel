@@ -54,7 +54,7 @@ fn bit_value(data: u8, shift: usize) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use input::bitevents::{bit_compare, BitEvent};
+    use crate::input::bitevents::{bit_compare, BitEvent};
 
     #[test]
     fn confirm_basic_event() {

@@ -1,6 +1,6 @@
-use input::InputError;
-use simulation::{EventHandler, HandlerFunc};
-use to_static;
+use crate::input::InputError;
+use crate::simulation::{EventHandler, HandlerFunc};
+use crate::to_static;
 
 type SoundFile = Option<(&'static String, f64)>;
 

@@ -1,4 +1,4 @@
-use input::bitevents::BitEvent;
+use crate::input::bitevents::BitEvent;
 use std::collections::BTreeMap;
 use std::sync::mpsc::Sender;
 
