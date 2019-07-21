@@ -89,8 +89,8 @@ fn compute_new_values(current_value: u16, bits: &[BitEvent]) -> u16 {
 
 #[cfg(test)]
 mod tests {
-    use create::input::bitevents::BitEvent;
-    use create::input::mcp23017::compute_new_values;
+    use crate::input::bitevents::BitEvent;
+    use crate::input::mcp23017::compute_new_values;
 
     #[test]
     fn test_compute_set_values() {
