@@ -77,10 +77,11 @@ impl InputHandler for StdinInput {
                     .map(|s| {
                         debug!("Parsing '{}'", s);
                         let parts = s.split(':').collect::<Vec<_>>();
-                        if parts.len() == 2 {
+                        if parts.len() == 3 {
                             Ok(BitEvent {
-                                bit: parts[0].parse()?,
-                                value: parts[1].parse()?,
+                                dev_name: String::from(parts[0]),
+                                bit: parts[1].parse()?,
+                                value: parts[2].parse()?,
                             })
                         } else {
                             Err(InputError {

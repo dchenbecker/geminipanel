@@ -34,18 +34,18 @@ pub fn create_handler(
 
 // Perform split and basic validation of the line
 pub fn split_sound_line(line: &str) -> Result<Vec<&str>, InputError> {
-    let parts: Vec<&str> = line.split(",").collect();
+    let parts: Vec<&str> = line.split(',').collect();
 
     debug!("Got definition for input {:?}", parts);
 
-    if parts.len() != 4 {
+    if parts.len() != 5 {
         return Err(InputError::new(format!(
             "Incorrect number of elements for {}",
             line
         )));
     }
 
-    if parts[1].trim().is_empty() {
+    if parts[2].trim().is_empty() {
         return Err(InputError::new(format!("Missing name for event: {}", line)));
     }
 
@@ -60,7 +60,7 @@ pub fn parse_sound_filename(filename: &str) -> Result<SoundFile, InputError> {
     if filename.is_empty() {
         Ok(None)
     } else {
-        let parts: Vec<_> = filename.split(":").collect();
+        let parts: Vec<_> = filename.split(':').collect();
 
         match parts.len() {
             1 => Ok(Some((to_static(parts[0]), music::MAX_VOLUME))),

@@ -1,5 +1,8 @@
 extern crate i2cdev;
 
+extern crate serde;
+extern crate serde_yaml;
+
 #[macro_use]
 extern crate log;
 extern crate env_logger;
@@ -8,6 +11,7 @@ extern crate music;
 
 use std::collections::BTreeSet;
 use std::env;
+use std::io::Read;
 use std::process;
 use std::sync::mpsc;
 
@@ -25,11 +29,8 @@ enum Music {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() != 4 {
-        eprintln!(
-            "Usage: {} <i2c dev path 1> <i2c dev path 2> [<event handler file>]",
-            args[0]
-        );
+    if args.len() < 2 || args.len() > 3 {
+        eprintln!("Usage: {} <device config> <event handler file>", args[0]);
         process::exit(-1);
     }
 
@@ -47,7 +48,7 @@ fn main() {
         info!("Starting music...");
         music::play_music(&Music::Background, music::Repeat::Forever);
 
-        let handlers = load_handlers(&args[3]).expect("Failed to load handlers");
+        let handlers = load_handlers(&args[2]).expect("Failed to load handlers");
 
         let sim = init_simulator(&tx, handlers);
 
@@ -58,8 +59,21 @@ fn main() {
             main_loop(&mut input::stdin::StdinInput::new(), rx, sim);
         } else {
             debug!("Read MCP23017");
+
+            // Read in device config
+            let mut dev_config_contents = String::new();
+            File::open(args[1].clone())
+                .unwrap()
+                .read_to_string(&mut dev_config_contents)
+                .unwrap();
+
+            let devices: Vec<input::mcp23017::config::DeviceConfig> =
+                serde_yaml::from_str(&dev_config_contents).unwrap();
+
+            println!("Read devices: {:?}", devices);
+
             main_loop(
-                &mut input::mcp23017::PanelInputHandler::new(&args)
+                &mut input::mcp23017::PanelInputHandler::new(&devices)
                     .expect("Could not init MCP23017s"),
                 rx,
                 sim,
@@ -116,7 +130,7 @@ use std::io::{BufRead, BufReader};
 
 const DEFAULT_NAME: &str = "default";
 
-// Format for each line is "input ID, <name>, <on sound filename>, <off sound filename>"
+// Format for each line is "<device name>, <input index>, <name>, <on sound filename>, <off sound filename>"
 // Filenames can have an optional float suffix (0-1] to specify volume
 fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
     use std::str::FromStr;
@@ -125,7 +139,7 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
 
     let mut loaded_sounds: BTreeSet<&String> = BTreeSet::new();
 
-    let input = File::open(filename)?;
+    let input = File::open(filename).unwrap();
     let reader = BufReader::new(input);
 
     let base_dir = match file_path.parent() {
@@ -136,33 +150,34 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
     let mut result: HandlerMap = BTreeMap::new();
 
     for line_result in reader.lines() {
-        let line = line_result?;
-        let parts = bindfiles::split_sound_line(&line)?;
+        let line = line_result.unwrap();
+        let parts = bindfiles::split_sound_line(&line).unwrap();
 
-        let key: usize = if parts[0] == DEFAULT_NAME {
-            simulation::DEFAULT_HANDLER_EVENT
+        let key: (String, u8) = if parts[0] == DEFAULT_NAME {
+            debug!("Default handler: {}", line);
+            simulation::default_handler_event()
         } else {
-            usize::from_str(parts[0])?
+            (String::from(parts[0]), u8::from_str(parts[1]).unwrap())
         };
 
         if result.contains_key(&key) {
             warn!("Redefining input: {:?}", parts);
         }
 
-        let on_file = bindfiles::parse_sound_filename(parts[2].trim())?;
+        let on_file = bindfiles::parse_sound_filename(parts[3].trim()).unwrap();
 
         if let Some((on_filename, _)) = on_file {
             if !loaded_sounds.contains(on_filename) {
-                bind_soundfile(&on_filename, &base_dir)?;
+                bind_soundfile(&on_filename, &base_dir).unwrap();
                 loaded_sounds.insert(on_filename);
             }
         }
 
-        let off_file = bindfiles::parse_sound_filename(parts[3].trim())?;
+        let off_file = bindfiles::parse_sound_filename(parts[3].trim()).unwrap();
 
         if let Some((off_filename, _)) = off_file {
             if !loaded_sounds.contains(off_filename) {
-                bind_soundfile(&off_filename, &base_dir)?;
+                bind_soundfile(&off_filename, &base_dir).unwrap();
                 loaded_sounds.insert(off_filename);
             }
         }

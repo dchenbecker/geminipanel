@@ -2,9 +2,12 @@ use crate::input::bitevents::BitEvent;
 use std::collections::BTreeMap;
 use std::sync::mpsc::Sender;
 
-pub const DEFAULT_HANDLER_EVENT: usize = usize::max_value();
+pub fn default_handler_event() -> (String, u8) {
+    (String::from(crate::DEFAULT_NAME), 0)
+}
 
-pub type HandlerMap = BTreeMap<usize, EventHandler>;
+// Map a device name and bit number to the handler
+pub type HandlerMap = BTreeMap<(String, u8), EventHandler>;
 
 pub struct Simulator {
     handlers: HandlerMap,
@@ -24,8 +27,8 @@ impl Simulator {
         for event in events {
             let target_handler = self
                 .handlers
-                .get(&event.bit)
-                .or(self.handlers.get(&DEFAULT_HANDLER_EVENT));
+                .get(&(event.dev_name.clone(), event.bit))
+                .or(self.handlers.get(&default_handler_event()));
 
             if let Some(to_fire) = target_handler {
                 info!("Firing '{}' for event {:?}", to_fire.name, event);
@@ -37,7 +40,7 @@ impl Simulator {
     }
 }
 
-pub type HandlerFunc = Box<Fn(u8, &Sender<BitEvent>) -> ()>;
+pub type HandlerFunc = Box<dyn Fn(u8, &Sender<BitEvent>) -> ()>;
 
 pub struct EventHandler {
     name: &'static str,
@@ -55,16 +58,24 @@ use std::thread;
 use std::time::Duration;
 
 /// Blink the given output on/off (one interval each) for the specified count
-pub fn blink(output_id: usize, count: usize, interval: Duration, tx: &Sender<BitEvent>) {
+pub fn blink(
+    dev_name: &str,
+    output_id: u8,
+    count: usize,
+    interval: Duration,
+    tx: &Sender<BitEvent>,
+) {
     debug!("Blinking {} times with interval {:?}", count, interval);
     for _ in 0..count {
         tx.send(BitEvent {
+            dev_name: String::from(dev_name),
             bit: output_id,
             value: 1,
         })
         .unwrap();
         thread::sleep(interval);
         tx.send(BitEvent {
+            dev_name: String::from(dev_name),
             bit: output_id,
             value: 0,
         })
@@ -73,6 +84,7 @@ pub fn blink(output_id: usize, count: usize, interval: Duration, tx: &Sender<Bit
     }
     // Finally, turn it on once done blinking
     tx.send(BitEvent {
+        dev_name: String::from(dev_name),
         bit: output_id,
         value: 1,
     })
