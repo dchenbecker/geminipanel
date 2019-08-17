@@ -1,0 +1,25 @@
+-
+    dev_path: /dev/i2c-0
+    dev_name: main_a
+    address: 0x20
+    polarity_mask: 0x0000
+    direction_mask: 0xffff
+-
+    dev_path: /dev/i2c-0
+    dev_name: main_b
+    address: 0x21
+    polarity_mask: 0x0000
+    direction_mask: 0xffff
+-
+    dev_path: /dev/i2c-0
+    dev_name: main_c
+    address: 0x22
+    polarity_mask: 0xfc03
+    direction_mask: 0xffff
+-
+    dev_path: /dev/i2c-0
+    dev_name: upper_a
+    address: 0x20
+    polarity_mask: 0x0000
+    direction_mask: 0x00ff
+    
