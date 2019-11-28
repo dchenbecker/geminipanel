@@ -28,7 +28,7 @@ impl Simulator {
             let target_handler = self
                 .handlers
                 .get(&(event.dev_name.clone(), event.bit))
-                .or(self.handlers.get(&default_handler_event()));
+                .or_else(|| self.handlers.get(&default_handler_event()));
 
             if let Some(to_fire) = target_handler {
                 info!("Firing '{}' for event {:?}", to_fire.name, event);
