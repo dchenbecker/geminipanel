@@ -1,0 +1,17 @@
+* The Gemini Panel
+
+This is a little project I've been working on to wire up a working reproduction of the control panel of the Gemini capsules
+for my kids to play with.
+
+* Hardware
+
+This runs on a Raspberry Pi B+ using both I2C buses and some custom PCBs using MCP23017s for IO expansion.
+
+[[https://photos.google.com/share/AF1QipNuAH7tMEMq0j1QLWIj-xw0SDkmawv6f7p6SQ0n4Gt5G9QVeqozbLmJUkq_4LVTyQ/photo/AF1QipMLJmPiajdBxvdRh_dQgQWwdnWnvnq-mdmLn4tb?key=cE1hY3Rlak1uTTlEVExScXVSb2Z1ZHRwMzhvYjFR][Panel front]]
+
+[[https://photos.google.com/share/AF1QipNt-HA_EWLpvxDuvRieB1yvwN02TjlgWfuA42cZ5sbHYnIcEx6AamWhqP8qThyLLg/photo/AF1QipMd6iHjaRqa2SXlhtH8ZZrq-ZIdMtzGBrtM91LB?key=czItMmtTTG5CQ0Eyeld6Zl9XeDJGV0pDRUhfZmRR][Build in progress]]
+
+[[https://photos.google.com/share/AF1QipOkAdebDyxoDmxKvheihQ0JDMMT1Gco4_GJIa_kXRAADMSotqFeqVRSEVywgTwgZQ/photo/AF1QipNF70mcvfH-X-rFeS2OEt7M73e2B9ZY4kWGtAoG?key=Y0h5S3JpclM0LWpKdmNQQW1fZDEwNWNidGd5ZGZn][Installed]]
+
+
+
