@@ -60,7 +60,7 @@ fn read_and_send(mut buffer: &mut String, tx: &mut Sender<String>) -> Result<(),
     let trimmed = buffer.trim();
 
     if !trimmed.is_empty() {
-        Ok(tx.send(trimmed.clone().to_string())?)
+        Ok(tx.send(trimmed.to_string())?)
     } else {
         // Empty input is not an error
         Ok(())

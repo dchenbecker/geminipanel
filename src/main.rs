@@ -194,7 +194,7 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
 
 use std::path::Path;
 
-fn bind_soundfile(filename: &'static String, base_dir: &Path) -> Result<(), InputError> {
+fn bind_soundfile(filename: &'static str, base_dir: &Path) -> Result<(), InputError> {
     assert!(!filename.is_empty(), "binding empty filename");
 
     let provided_path = Path::new(filename);
