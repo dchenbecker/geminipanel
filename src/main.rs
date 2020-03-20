@@ -5,21 +5,25 @@ extern crate serde_yaml;
 
 #[macro_use]
 extern crate log;
-extern crate env_logger;
+use env_logger;
 
-extern crate music;
+use music;
+
+use actix::prelude::*;
 
 use std::collections::BTreeSet;
 use std::env;
 use std::io::Read;
 use std::process;
 use std::sync::mpsc;
+use std::time::Instant;
 
 mod bindfiles;
 mod input;
 mod simulation;
 
 use input::bitevents::BitEvent;
+use simulation::InputEvents;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 enum Music {
@@ -35,6 +39,9 @@ fn main() {
     }
 
     env_logger::init();
+
+    // Initiate the Actix system
+    let system = System::new("gemini");
 
     // Set up a channel for simulation feedback
     let (tx, rx) = mpsc::channel::<BitEvent>();
@@ -56,7 +63,11 @@ fn main() {
 
         if args[1].to_lowercase() == "stdin" {
             debug!("Read Stdin");
-            main_loop(&mut input::stdin::StdinInput::new(), rx, sim);
+
+            input::stdin::StdinInput {
+                recipient: sim.recipient(),
+            }
+            .start();
         } else {
             debug!("Read MCP23017");
 
@@ -82,12 +93,14 @@ fn main() {
 
         info!("Sound complete");
     });
+
+    system.run().unwrap();
 }
 
 fn main_loop<T: input::InputHandler>(
     input: &mut T,
     rx: mpsc::Receiver<BitEvent>,
-    sim: simulation::Simulator,
+    sim: Addr<simulation::Simulator>,
 ) {
     loop {
         // fetch any pending handler feedback events
@@ -102,7 +115,11 @@ fn main_loop<T: input::InputHandler>(
         match input.read_events() {
             Ok(ref events) if !events.is_empty() => {
                 info!("Read {:?}", events);
-                sim.process(&events);
+                sim.try_send(InputEvents {
+                    time: Instant::now(),
+                    events: events.to_vec(),
+                })
+                .unwrap();
             }
             Ok(_) => {
                 // Noop on empty input
@@ -116,10 +133,12 @@ fn main_loop<T: input::InputHandler>(
 
 // Globals for now, need to encapsulate state later
 
-fn init_simulator(sender: &mpsc::Sender<BitEvent>, handlers: HandlerMap) -> simulation::Simulator {
+fn init_simulator(
+    sender: &mpsc::Sender<BitEvent>,
+    handlers: HandlerMap,
+) -> Addr<simulation::Simulator> {
     use simulation::*;
-
-    Simulator::new(handlers, &sender)
+    Simulator::new(handlers, &sender).start()
 }
 
 use input::InputError;
@@ -183,7 +202,7 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
         }
 
         if let Some(handler) =
-            bindfiles::create_handler(to_static(parts[1].trim()), on_file, off_file)
+            bindfiles::create_handler(to_static(parts[2].trim()), on_file, off_file)
         {
             result.insert(key, handler);
         }
@@ -194,7 +213,7 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
 
 use std::path::Path;
 
-fn bind_soundfile(filename: &'static str, base_dir: &Path) -> Result<(), InputError> {
+fn bind_soundfile(filename: &'static String, base_dir: &Path) -> Result<(), InputError> {
     assert!(!filename.is_empty(), "binding empty filename");
 
     let provided_path = Path::new(filename);

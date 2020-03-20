@@ -1,119 +1,97 @@
-use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, Receiver, SendError, Sender, TryRecvError};
-use std::sync::Arc;
-use std::thread;
-use std::thread::JoinHandle;
+use super::InputError;
+use crate::input::bitevents::BitEvent;
+use crate::simulation::InputEvents;
 
-use super::bitevents::BitEvent;
-use super::*;
+use actix::prelude::*;
+
+use tokio::io;
+use tokio::io::AsyncBufReadExt;
+use tokio::stream::StreamExt;
 
 pub struct StdinInput {
-    poller: JoinHandle<()>,
-    rx: Receiver<String>,
-    poll_condition: Arc<AtomicBool>,
+    pub recipient: Recipient<InputEvents>,
 }
 
-impl From<SendError<String>> for InputError {
-    fn from(err: SendError<String>) -> InputError {
-        InputError {
-            message: format!("Unable to send '{}' on channel", err.0),
+impl Actor for StdinInput {
+    type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Context<Self>) {
+        // Create a stream to read
+        let stdin = io::stdin();
+        let reader = io::BufReader::new(stdin);
+
+        Self::add_stream(reader.lines().map(|l| l.unwrap()), ctx);
+    }
+}
+
+impl StreamHandler<String> for StdinInput {
+    fn handle(&mut self, input: String, _: &mut Self::Context) {
+        match parse_events(&input) {
+            Ok(events) => self
+                .recipient
+                .do_send(InputEvents::for_events(events))
+                .unwrap(),
+            Err(e) => warn!("{}", e),
         }
     }
 }
 
-const DEFAULT_INPUT_BUFFER_SIZE: usize = 1024;
-
-impl StdinInput {
-    pub fn new() -> StdinInput {
-        // Set up a thread to poll for input on stdin, and a channel to use for transferring that input
-        let (mut tx, rx) = channel();
-
-        let poll_guard = Arc::new(AtomicBool::new(true));
-
-        let poll_condition = poll_guard.clone();
-
-        let poller = thread::spawn(move || {
-            let mut buffer = String::with_capacity(DEFAULT_INPUT_BUFFER_SIZE);
-            let should_run = poll_guard.clone();
-            while should_run.load(Ordering::Relaxed) {
-                buffer.clear();
-                read_and_send(&mut buffer, &mut tx).unwrap_or_else(|err| {
-                    warn!("Error polling stdin: {}", err.message);
-                });
+fn parse_events(input: &str) -> Result<Vec<BitEvent>, InputError> {
+    input
+        .split(',')
+        .map(|s| {
+            debug!("Parsing '{}'", s);
+            let parts = s.split(':').collect::<Vec<_>>();
+            if parts.len() == 3 {
+                Ok(BitEvent {
+                    dev_name: String::from(parts[0]),
+                    bit: parts[1].parse()?,
+                    value: parts[2].parse()?,
+                })
+            } else {
+                Err(InputError {
+                    message: format!("Invalid input spec: '{}'", s),
+                })
             }
-        });
-
-        // Noop
-        StdinInput {
-            poller,
-            rx,
-            poll_condition,
-        }
-    }
+        })
+        .collect()
 }
 
-/// A utility method to simplify error type unification
-fn read_and_send(mut buffer: &mut String, tx: &mut Sender<String>) -> Result<(), InputError> {
-    io::stdin().read_line(&mut buffer)?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let trimmed = buffer.trim();
-
-    if !trimmed.is_empty() {
-        Ok(tx.send(trimmed.to_string())?)
-    } else {
-        // Empty input is not an error
-        Ok(())
-    }
-}
-
-impl InputHandler for StdinInput {
-    fn read_events(&mut self) -> Result<Vec<BitEvent>, InputError> {
-        match self.rx.try_recv() {
-            Ok(input) => {
-                // The poller thread guarantees that input is non-empty
-                input
-                    .split(',')
-                    .map(|s| {
-                        debug!("Parsing '{}'", s);
-                        let parts = s.split(':').collect::<Vec<_>>();
-                        if parts.len() == 3 {
-                            Ok(BitEvent {
-                                dev_name: String::from(parts[0]),
-                                bit: parts[1].parse()?,
-                                value: parts[2].parse()?,
-                            })
-                        } else {
-                            Err(InputError {
-                                message: format!("Invalid input spec: '{}'", s),
-                            })
-                        }
-                    })
-                    .collect()
-            }
-
-            Err(TryRecvError::Empty) => {
-                // Noop, empty input is fine
-                Ok(vec![])
-            }
-
-            Err(TryRecvError::Disconnected) => {
-                panic!("Stdin channel is disconnected! Hard stop.");
-            }
-        }
+    #[test]
+    fn test_parse_valid_pattern() {
+        assert_eq!(
+            Ok(vec!(
+                BitEvent {
+                    dev_name: "test".to_string(),
+                    bit: 1,
+                    value: 1
+                },
+                BitEvent {
+                    dev_name: "foo".to_string(),
+                    bit: 42,
+                    value: 0
+                }
+            )),
+            parse_events("test:1:1,foo:42:0")
+        );
     }
 
-    fn set_output(&mut self, dev_index: usize, bits: &[BitEvent]) -> Result<(), InputError> {
-        println!("Setting bits {:?} for dev {}", bits, dev_index);
-        Ok(())
+    #[test]
+    fn test_parse_invalid_pattern() {
+        assert!(parse_events("not a valid pattern").is_err());
     }
 
-    fn shutdown(self) {
-        debug!("Shutting down STDIN poller thread");
+    #[test]
+    fn test_parse_invalid_bit() {
+        assert!(parse_events("test:test:0").is_err());
+    }
 
-        self.poll_condition.store(false, Ordering::Relaxed);
-        self.poller
-            .join()
-            .expect("Failed to cleanly shut down StdinInput");
+    #[test]
+    fn test_parse_invalid_value() {
+        assert!(parse_events("test:12:off").is_err());
     }
 }

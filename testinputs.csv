@@ -1,2 +1,2 @@
-main_a,0,test1,sounds/quindar.mp3,sounds/quindar.mp3
-default,0,test2,sounds/beep-one.mp3,sounds/beep-two.mp3
+main_a,0,main_a,sounds/quindar.mp3,sounds/quindar.mp3
+default,0,default,sounds/beep-one.mp3,sounds/beep-two.mp3

@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::Error;
 use std::fmt::Formatter;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BitEvent {
     pub dev_name: String,
     pub bit: u8,
