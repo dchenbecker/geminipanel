@@ -2,7 +2,10 @@ use std::fmt;
 use std::fmt::Error;
 use std::fmt::Formatter;
 
-#[derive(Clone, Debug, PartialEq)]
+use actix::prelude::*;
+
+#[derive(Clone, Debug, PartialEq, Message)]
+#[rtype(result = "()")]
 pub struct BitEvent {
     pub dev_name: String,
     pub bit: u8,

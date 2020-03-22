@@ -15,15 +15,11 @@ use std::collections::BTreeSet;
 use std::env;
 use std::io::Read;
 use std::process;
-use std::sync::mpsc;
-use std::time::Instant;
 
 mod bindfiles;
 mod input;
 mod simulation;
-
-use input::bitevents::BitEvent;
-use simulation::InputEvents;
+mod utility;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 enum Music {
@@ -43,9 +39,6 @@ fn main() {
     // Initiate the Actix system
     let system = System::new("gemini");
 
-    // Set up a channel for simulation feedback
-    let (tx, rx) = mpsc::channel::<BitEvent>();
-
     info!("Init sound...");
 
     music::start::<Music, &'static String, _>(16, || {
@@ -57,7 +50,7 @@ fn main() {
 
         let handlers = load_handlers(&args[2]).expect("Failed to load handlers");
 
-        let sim = init_simulator(&tx, handlers);
+        let sim = simulation::Simulator::new(handlers).start();
 
         info!("Configuring devices...");
 
@@ -83,62 +76,15 @@ fn main() {
 
             println!("Read devices: {:?}", devices);
 
-            main_loop(
-                &mut input::mcp23017::PanelInputHandler::new(&devices)
-                    .expect("Could not init MCP23017s"),
-                rx,
-                sim,
-            );
+            input::mcp23017::PanelInputHandler::new(&devices, sim.recipient())
+                .unwrap()
+                .start();
         }
 
         info!("Sound complete");
     });
 
     system.run().unwrap();
-}
-
-fn main_loop<T: input::InputHandler>(
-    input: &mut T,
-    rx: mpsc::Receiver<BitEvent>,
-    sim: Addr<simulation::Simulator>,
-) {
-    loop {
-        // fetch any pending handler feedback events
-        let feedback_events: Vec<BitEvent> = rx.try_iter().collect();
-
-        if !feedback_events.is_empty() {
-            input.set_output(3, &feedback_events).unwrap_or_else(|err| {
-                warn!("Error setting outputs {:?}: {}", feedback_events, err);
-            });
-        }
-
-        match input.read_events() {
-            Ok(ref events) if !events.is_empty() => {
-                info!("Read {:?}", events);
-                sim.try_send(InputEvents {
-                    time: Instant::now(),
-                    events: events.to_vec(),
-                })
-                .unwrap();
-            }
-            Ok(_) => {
-                // Noop on empty input
-            }
-            Err(e) => {
-                error!("Error reading events: {}", e);
-            }
-        }
-    }
-}
-
-// Globals for now, need to encapsulate state later
-
-fn init_simulator(
-    sender: &mpsc::Sender<BitEvent>,
-    handlers: HandlerMap,
-) -> Addr<simulation::Simulator> {
-    use simulation::*;
-    Simulator::new(handlers, &sender).start()
 }
 
 use input::InputError;

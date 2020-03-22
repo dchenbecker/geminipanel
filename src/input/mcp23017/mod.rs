@@ -1,29 +1,61 @@
 use i2cdev::core::*;
 use i2cdev::linux::{LinuxI2CDevice, LinuxI2CError};
 
-use std::thread;
 use std::time::Duration;
+
+use actix::prelude::*;
 
 use super::bitevents::*;
 use super::*;
 
+use crate::simulation::InputEvents;
+
 pub mod config;
-use crate::input::mcp23017::config::DeviceConfig;
+use self::config::DeviceConfig;
 
 const POLL_TIME: Duration = Duration::from_millis(100);
 
+impl Actor for PanelInputHandler {
+    type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Context<Self>) {
+        ctx.run_interval(POLL_TIME, |input, _| match input.poll_inputs() {
+            Ok(events) => input
+                .recipient
+                .do_send(InputEvents::for_events(events))
+                .unwrap(),
+            Err(e) => warn!("{}", e),
+        });
+    }
+}
+
 pub struct PanelInputHandler {
+    recipient: Recipient<InputEvents>,
     // Input is handled as a pair of device and previous state
     devices: Vec<MCP23017>,
 }
 
 impl PanelInputHandler {
-    pub fn new(device_config: &[DeviceConfig]) -> Result<PanelInputHandler, InputError> {
+    pub fn new(
+        device_config: &[DeviceConfig],
+        recipient: Recipient<InputEvents>,
+    ) -> Result<PanelInputHandler, InputError> {
         let devices = setup_devices(device_config)?;
 
-        let state = PanelInputHandler { devices };
+        let state = PanelInputHandler { recipient, devices };
 
         Ok(state)
+    }
+
+    pub fn poll_inputs(&mut self) -> Result<Vec<BitEvent>, InputError> {
+        let mut events: Vec<BitEvent> = Vec::new();
+
+        for dev in &mut self.devices {
+            let mut inputs = dev.poll_input()?;
+            events.append(&mut inputs);
+        }
+
+        Ok(events)
     }
 }
 
@@ -137,7 +169,8 @@ mod tests {
 
 impl<'config> InputHandler for PanelInputHandler {
     fn read_events(&mut self) -> Result<Vec<BitEvent>, InputError> {
-        poll_inputs(self)
+        // NOOP (before removal)
+        Ok(vec![])
     }
 
     fn set_output(&mut self, dev_index: usize, bits: &[BitEvent]) -> Result<(), InputError> {
@@ -237,21 +270,4 @@ pub fn setup_mcp23017(config: &DeviceConfig) -> Result<MCP23017, LinuxI2CError> 
 
 fn setup_devices(devices: &[DeviceConfig]) -> Result<Vec<MCP23017>, LinuxI2CError> {
     devices.iter().map(&setup_mcp23017).collect()
-}
-
-fn poll_inputs(state: &mut PanelInputHandler) -> Result<Vec<BitEvent>, InputError> {
-    loop {
-        let mut events: Vec<BitEvent> = Vec::new();
-
-        for dev in &mut state.devices {
-            let mut inputs = dev.poll_input()?;
-            events.append(&mut inputs);
-        }
-
-        if !events.is_empty() {
-            return Ok(events);
-        }
-
-        thread::sleep(POLL_TIME);
-    }
 }
