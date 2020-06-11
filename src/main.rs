@@ -7,11 +7,10 @@ extern crate serde_yaml;
 extern crate log;
 use env_logger;
 
-use music;
+use sdl2::mixer;
 
 use actix::prelude::*;
 
-use std::collections::BTreeSet;
 use std::env;
 use std::io::Read;
 use std::process;
@@ -21,10 +20,7 @@ mod input;
 mod simulation;
 mod utility;
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
-enum Music {
-    Background,
-}
+const REPEAT_FOREVER: i32 = -1;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -41,48 +37,55 @@ fn main() {
 
     info!("Init sound...");
 
-    music::start::<Music, &'static String, _>(16, || {
-        music::bind_music_file(Music::Background, "./sounds/background.wav");
-        music::set_volume(music::MAX_VOLUME);
+    let _ = sdl2::init().unwrap();
+    let _ = mixer::init(mixer::InitFlag::MP3).unwrap();
+    mixer::open_audio(
+        mixer::DEFAULT_FREQUENCY,
+        mixer::DEFAULT_FORMAT,
+        mixer::DEFAULT_CHANNELS,
+        1024,
+    )
+    .unwrap();
+    mixer::allocate_channels(16);
 
-        info!("Starting music...");
-        music::play_music(&Music::Background, music::Repeat::Forever);
+    let background = mixer::Music::from_file("./sounds/background.wav").unwrap();
+    mixer::Music::set_volume(mixer::MAX_VOLUME);
+    background.play(REPEAT_FOREVER);
 
-        let handlers = load_handlers(&args[2]).expect("Failed to load handlers");
+    info!("Sound complete");
 
-        let sim = simulation::Simulator::new(handlers).start();
+    let handlers = load_handlers(&args[2]).expect("Failed to load handlers");
 
-        info!("Configuring devices...");
+    let sim = simulation::Simulator::new(handlers).start();
 
-        if args[1].to_lowercase() == "stdin" {
-            debug!("Read Stdin");
+    info!("Configuring devices...");
 
-            input::stdin::StdinInput {
-                recipient: sim.recipient(),
-            }
-            .start();
-        } else {
-            debug!("Read MCP23017");
+    if args[1].to_lowercase() == "stdin" {
+        debug!("Read Stdin");
 
-            // Read in device config
-            let mut dev_config_contents = String::new();
-            File::open(args[1].clone())
-                .unwrap()
-                .read_to_string(&mut dev_config_contents)
-                .unwrap();
-
-            let devices: Vec<input::mcp23017::config::DeviceConfig> =
-                serde_yaml::from_str(&dev_config_contents).unwrap();
-
-            println!("Read devices: {:?}", devices);
-
-            input::mcp23017::PanelInputHandler::new(&devices, sim.recipient())
-                .unwrap()
-                .start();
+        input::stdin::StdinInput {
+            recipient: sim.recipient(),
         }
+        .start();
+    } else {
+        debug!("Read MCP23017");
 
-        info!("Sound complete");
-    });
+        // Read in device config
+        let mut dev_config_contents = String::new();
+        File::open(args[1].clone())
+            .unwrap()
+            .read_to_string(&mut dev_config_contents)
+            .unwrap();
+
+        let devices: Vec<input::mcp23017::config::DeviceConfig> =
+            serde_yaml::from_str(&dev_config_contents).unwrap();
+
+        println!("Read devices: {:?}", devices);
+
+        input::mcp23017::PanelInputHandler::new(&devices, sim.recipient())
+            .unwrap()
+            .start();
+    }
 
     system.run().unwrap();
 }
@@ -101,8 +104,6 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
     use std::str::FromStr;
 
     let file_path = Path::new(filename);
-
-    let mut loaded_sounds: BTreeSet<&String> = BTreeSet::new();
 
     let input = File::open(filename).unwrap();
     let reader = BufReader::new(input);
@@ -130,25 +131,10 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
         }
 
         let on_file = bindfiles::parse_sound_filename(parts[3].trim()).unwrap();
-
-        if let Some((on_filename, _)) = on_file {
-            if !loaded_sounds.contains(on_filename) {
-                bind_soundfile(&on_filename, &base_dir).unwrap();
-                loaded_sounds.insert(on_filename);
-            }
-        }
-
         let off_file = bindfiles::parse_sound_filename(parts[3].trim()).unwrap();
 
-        if let Some((off_filename, _)) = off_file {
-            if !loaded_sounds.contains(off_filename) {
-                bind_soundfile(&off_filename, &base_dir).unwrap();
-                loaded_sounds.insert(off_filename);
-            }
-        }
-
         if let Some(handler) =
-            bindfiles::create_handler(to_static(parts[2].trim()), on_file, off_file)
+            bindfiles::create_handler(to_static(parts[2].trim()), on_file, off_file)?
         {
             result.insert(key, handler);
         }
@@ -158,39 +144,6 @@ fn load_handlers(filename: &str) -> Result<HandlerMap, InputError> {
 }
 
 use std::path::Path;
-
-fn bind_soundfile(filename: &'static String, base_dir: &Path) -> Result<(), InputError> {
-    assert!(!filename.is_empty(), "binding empty filename");
-
-    let provided_path = Path::new(filename);
-    let mut absolute_path = base_dir.to_path_buf();
-
-    // Make non-absolute paths relative to the base_dir
-    let resolved_path = if provided_path.has_root() {
-        provided_path
-    } else {
-        absolute_path.push(provided_path);
-        absolute_path.as_path()
-    };
-
-    if !resolved_path.exists() {
-        return Err(InputError::new(format!(
-            "Sound file '{}' does not exist",
-            filename
-        )));
-    }
-
-    if !resolved_path.is_file() {
-        return Err(InputError::new(format!(
-            "Sound file '{}' does not exist",
-            filename
-        )));
-    }
-
-    music::bind_sound_file(filename, filename);
-
-    Ok(())
-}
 
 fn to_static(input: &str) -> &'static String {
     Box::leak(Box::new(String::from(input)))
